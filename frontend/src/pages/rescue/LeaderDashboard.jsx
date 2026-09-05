@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AlertOctagon, Bot, Layers, RefreshCw, Timer, Users2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ export default function LeaderDashboard() {
   const [recs, setRecs] = useState(null);
   const [advisory, setAdvisory] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  // NEW: popup state + ref for auto-scroll target
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const recPanelRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -41,6 +45,13 @@ export default function LeaderDashboard() {
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
   }, [load]);
+
+  // NEW: whenever a recommendation panel becomes active, scroll to it
+  useEffect(() => {
+    if (selected && recPanelRef.current) {
+      recPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selected]);
 
   const openRecommendations = async (sos) => {
     setSelected(sos);
@@ -165,9 +176,10 @@ export default function LeaderDashboard() {
                       <td className="py-2 pr-3 text-xs">{s.assignedTeamId || "—"}</td>
                       <td className="py-2">
                         {["PENDING", "TIMEOUT", "VERIFIED"].includes(s.status) ? (
-                          <Button onClick={() => openRecommendations(s)}
-                                  data-testid={`assign-button-${s.sosId}`}
-                                  className="h-8 text-xs bg-national text-white">
+                          <Button
+                            onClick={() => setConfirmTarget(s)} /* CHANGED: open popup instead of direct call */
+                            data-testid={`assign-button-${s.sosId}`}
+                            className="h-8 text-xs bg-national text-white">
                             Assign team
                           </Button>
                         ) : (
@@ -188,49 +200,51 @@ export default function LeaderDashboard() {
           </Panel>
 
           {selected && (
-            <Panel title={`Assignment recommendation — ${selected.sosId}`}
-                   action={
-                     <button className="text-xs text-slate-500 underline"
-                             onClick={() => { setSelected(null); setRecs(null); }}>
-                       Close
-                     </button>
-                   }>
-              {!recs ? (
-                <p className="text-sm text-slate-500">Ranking teams…</p>
-              ) : (
-                <div className="space-y-3" data-testid="recommendation-panel">
-                  <SafetyNote>{recs.note}</SafetyNote>
-                  <div className="text-xs text-slate-600">
-                    Recommended team size: <strong>{recs.recommendedTeamSize}</strong> (advisory)
-                  </div>
-                  {recs.recommendations.map((r, i) => (
-                    <div key={r.teamId} className="border border-slate-200 rounded-md p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="font-semibold text-national text-sm">
-                            {i === 0 && <span className="text-[10px] uppercase text-saffron mr-2">top suggestion</span>}
-                            {r.name} <span className="font-mono text-xs text-slate-500">{r.teamId}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {r.status} • {r.vehicle} • score {r.score}
-                            {r.distanceKm !== null ? ` • ${r.distanceKm} km` : ""}
-                          </div>
-                        </div>
-                        <Button disabled={busy || !r.assignable}
-                                onClick={() => assign(r.teamId, i === 0)}
-                                data-testid={`confirm-assign-${r.teamId}`}
-                                className={`h-8 text-xs ${r.assignable ? "bg-national text-white" : "bg-slate-200 text-slate-500"}`}>
-                          {r.assignable ? (i === 0 ? "Confirm assignment" : "Assign anyway (override)") : "Not available"}
-                        </Button>
-                      </div>
-                      <ul className="list-disc ml-5 mt-2 text-[11px] text-slate-600">
-                        {r.factors.map((f) => <li key={f}>{f}</li>)}
-                      </ul>
+            <div ref={recPanelRef}> {/* NEW: scroll target wrapper, no visual change */}
+              <Panel title={`Assignment recommendation — ${selected.sosId}`}
+                     action={
+                       <button className="text-xs text-slate-500 underline"
+                               onClick={() => { setSelected(null); setRecs(null); }}>
+                         Close
+                       </button>
+                     }>
+                {!recs ? (
+                  <p className="text-sm text-slate-500">Ranking teams…</p>
+                ) : (
+                  <div className="space-y-3" data-testid="recommendation-panel">
+                    <SafetyNote>{recs.note}</SafetyNote>
+                    <div className="text-xs text-slate-600">
+                      Recommended team size: <strong>{recs.recommendedTeamSize}</strong> (advisory)
                     </div>
-                  ))}
-                </div>
-              )}
-            </Panel>
+                    {recs.recommendations.map((r, i) => (
+                      <div key={r.teamId} className="border border-slate-200 rounded-md p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold text-national text-sm">
+                              {i === 0 && <span className="text-[10px] uppercase text-saffron mr-2">top suggestion</span>}
+                              {r.name} <span className="font-mono text-xs text-slate-500">{r.teamId}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {r.status} • {r.vehicle} • score {r.score}
+                              {r.distanceKm !== null ? ` • ${r.distanceKm} km` : ""}
+                            </div>
+                          </div>
+                          <Button disabled={busy || !r.assignable}
+                                  onClick={() => assign(r.teamId, i === 0)}
+                                  data-testid={`confirm-assign-${r.teamId}`}
+                                  className={`h-8 text-xs ${r.assignable ? "bg-national text-white" : "bg-slate-200 text-slate-500"}`}>
+                            {r.assignable ? (i === 0 ? "Confirm assignment" : "Assign anyway (override)") : "Not available"}
+                          </Button>
+                        </div>
+                        <ul className="list-disc ml-5 mt-2 text-[11px] text-slate-600">
+                          {r.factors.map((f) => <li key={f}>{f}</li>)}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </div>
           )}
         </div>
 
@@ -322,6 +336,39 @@ export default function LeaderDashboard() {
           </Panel>
         </div>
       </div>
+
+      {/* NEW: confirmation popup */}
+      {confirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5">
+            <h3 className="text-sm font-semibold text-national mb-2">Assign a team</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Ready to view team recommendations for{" "}
+              <span className="font-mono">{confirmTarget.sosId}</span>? You'll still confirm the
+              final assignment on the next screen.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="h-8 px-3 text-xs rounded-md border border-slate-300 text-slate-600"
+                onClick={() => setConfirmTarget(null)}
+              >
+                Cancel
+              </button>
+              <Button
+                className="h-8 text-xs bg-national text-white"
+                data-testid="confirm-ready-assign"
+                onClick={() => {
+                  const sos = confirmTarget;
+                  setConfirmTarget(null);
+                  openRecommendations(sos); // SAME function, SAME behavior as before
+                }}
+              >
+                I'm ready, show recommendations
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
