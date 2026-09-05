@@ -24,6 +24,7 @@ export default function Shelters() {
     navigator.geolocation.getCurrentPosition((pos) => { setLat(pos.coords.latitude); setLng(pos.coords.longitude); });
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { find(); }, []); // initial
 
   return (

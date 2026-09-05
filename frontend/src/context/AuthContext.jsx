@@ -84,6 +84,7 @@ export function AuthProvider({ children }) {
       isCitizen: user?.role === "USER",
       isAdmin: ["AUTHORITY", "SUPER_ADMIN"].includes(user?.role),
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, token, loading, logout]
   );
 

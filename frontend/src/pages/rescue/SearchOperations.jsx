@@ -52,6 +52,7 @@ export default function SearchOperations() {
     } catch (e) {
       toast.error(apiError(e, "Could not load search operations"));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLeader]);
 
   useEffect(() => { load(); }, [load]);

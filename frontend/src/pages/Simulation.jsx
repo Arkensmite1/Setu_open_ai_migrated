@@ -23,6 +23,7 @@ export default function Simulation() {
     } finally { setBusy(false); }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { run(); }, []); // initial
   const region = regions.find(r => r.id === regionId);
 
