@@ -32,6 +32,18 @@ const NEXT_ACTIONS = {
 
 const field = "w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:outline-none focus:border-national";
 
+const formatLatLng = (loc) => {
+  if (!loc || loc.latitude === undefined || loc.longitude === undefined) return "Location unavailable";
+  return `${Number(loc.latitude).toFixed(5)}, ${Number(loc.longitude).toFixed(5)}`;
+};
+
+const formatTimestamp = (value) => {
+  if (!value) return "Waiting for update";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Waiting for update";
+  return d.toLocaleString();
+};
+
 export default function MemberDashboard() {
   const [teamId, setTeamId] = useState(null);
   const [cases, setCases] = useState([]);
@@ -44,6 +56,9 @@ export default function MemberDashboard() {
     victimConfirmation: true, victimConfirmationWaivedReason: "", observations: "",
   });
   const [road, setRoad] = useState("");
+
+  // NEW: holds { s, status, label } for the confirmation popup
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -201,6 +216,28 @@ export default function MemberDashboard() {
                   )}
                 </div>
                 <LocationQuality quality={s.locationQuality} />
+                {s.liveTrackingActive ? (
+                  <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">
+                       {s.trackingLabel || "Citizen live location"}
+                      </span>
+                      <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                       LIVE
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm text-slate-700">
+                      Citizen location: <strong>{formatLatLng(s.counterpartLocation)}</strong>
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      Last updated: {formatTimestamp(s.counterpartLocation?.timestamp)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    Live tracking is waiting for an active assignment.
+                  </div>
+                )}
                 <input className={field} placeholder="Field note (optional, stored in the audit log)"
                        value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
@@ -229,8 +266,10 @@ export default function MemberDashboard() {
                     )}
                   </>
                 )}
+                {/* CHANGED: status buttons open the confirmation popup instead of calling setStatus directly */}
                 {(NEXT_ACTIONS[s.status] || []).map(([status, label]) => (
-                  <Button key={status} onClick={() => setStatus(s, status)}
+                  <Button key={status}
+                          onClick={() => setConfirmAction({ s, status, label })}
                           data-testid={`status-${status}-${s.sosId}`}
                           className="w-full bg-national text-white text-xs">
                     {label}
@@ -243,8 +282,9 @@ export default function MemberDashboard() {
                     Submit rescue report
                   </Button>
                 )}
+                {/* CHANGED: false-alarm also opens the same confirmation popup */}
                 {["ARRIVED", "RESCUING", "SEARCHING"].includes(s.status) && (
-                  <Button onClick={() => setStatus(s, "FALSE_ALARM")}
+                  <Button onClick={() => setConfirmAction({ s, status: "FALSE_ALARM", label: "No emergency found (false SOS)" })}
                           data-testid={`false-alarm-${s.sosId}`}
                           className="w-full bg-white border border-slate-300 text-slate-700 text-xs">
                     No emergency found (false SOS)
@@ -315,6 +355,116 @@ export default function MemberDashboard() {
           Nearby teams are notified and routes are recalculated as advisory suggestions only.
         </p>
       </Panel>
+
+      {/* NEW: confirmation popup with clean, scrollable case summary */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[85vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-national">
+                Confirm: {confirmAction.label}
+              </h3>
+              <button
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+                onClick={() => setConfirmAction(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs text-slate-500">{confirmAction.s.sosId}</span>
+                <StateBadge status={confirmAction.s.status} />
+                <PriorityBadge priority={confirmAction.s.priority} />
+              </div>
+
+              <div className="text-xs text-slate-600">
+                {confirmAction.s.peopleCount} people • {confirmAction.s.injuredCount} injured
+                {confirmAction.s.childrenCount ? ` • ${confirmAction.s.childrenCount} children` : ""}
+                {confirmAction.s.elderlyCount ? ` • ${confirmAction.s.elderlyCount} elderly` : ""}
+              </div>
+
+              {confirmAction.s.description && (
+                <p className="text-sm text-slate-700 italic">“{confirmAction.s.description}”</p>
+              )}
+
+              {confirmAction.s.accessibilityRequirement && (
+                <p className="text-xs text-slate-700">
+                  Accessibility: <strong>{confirmAction.s.accessibilityRequirement}</strong>
+                </p>
+              )}
+
+              {confirmAction.s.landmark && (
+                <p className="text-xs text-slate-700">
+                  Landmark: <strong>{confirmAction.s.landmark}</strong>
+                </p>
+              )}
+
+              <div className="text-xs text-slate-600">
+                Origin: {confirmAction.s.origin?.latitude?.toFixed(5)}, {confirmAction.s.origin?.longitude?.toFixed(5)}
+                {confirmAction.s.lastKnown &&
+                  (confirmAction.s.lastKnown.latitude !== confirmAction.s.origin?.latitude ||
+                   confirmAction.s.lastKnown.longitude !== confirmAction.s.origin?.longitude) && (
+                  <> • last known: {confirmAction.s.lastKnown.latitude.toFixed(5)}, {confirmAction.s.lastKnown.longitude.toFixed(5)}</>
+                )}
+              </div>
+
+              <LocationQuality quality={confirmAction.s.locationQuality} />
+
+              {confirmAction.s.liveTrackingActive ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">
+                      {confirmAction.s.trackingLabel || "Citizen live location"}
+                    </span>
+                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                      LIVE
+                    </span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-700">
+                    Citizen location: <strong>{formatLatLng(confirmAction.s.counterpartLocation)}</strong>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Last updated: {formatTimestamp(confirmAction.s.counterpartLocation?.timestamp)}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  Live tracking is waiting for an active assignment.
+                </div>
+              )}
+
+              {note && (
+                <div className="text-xs text-slate-600 border-t border-slate-100 pt-3">
+                  Field note to be saved: <span className="italic">“{note}”</span>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-5 py-3 flex justify-end gap-2">
+              <button
+                className="h-8 px-3 text-xs rounded-md border border-slate-300 text-slate-600"
+                onClick={() => setConfirmAction(null)}
+              >
+                Cancel
+              </button>
+              <Button
+                className="h-8 text-xs bg-national text-white"
+                data-testid="confirm-status-action"
+                onClick={() => {
+                  const { s, status } = confirmAction;
+                  setConfirmAction(null);
+                  setStatus(s, status); // SAME function, SAME behavior as before
+                }}
+              >
+                Confirm — {confirmAction.label}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
